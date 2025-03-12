@@ -30,9 +30,9 @@ Label Correction Web App is a Flask-based application designed for interactive c
   source venv/bin/activate # For Windows use: venv\Scripts\activate
 
 3. **Install Dependencies**
-  '''bash
+  ```bash
   pip install -r requirements.txt
 
 4. **Run the Label Correction Process**
-  '''bash
+  ```bash
   python main.py
