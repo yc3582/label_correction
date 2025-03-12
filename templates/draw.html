@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Draw Contours</title>
+  <style>
+    canvas {
+      border: 1px solid #000;
+      cursor: crosshair;
+    }
+  </style>
+</head>
+<body>
+  <h1>Draw Contours on the Image</h1>
+  <canvas id="imageCanvas"></canvas>
+  <br>
+  <!-- Controls for drawing -->
+  <button id="undoButton">Undo</button>
+  <button id="completeButton">Complete</button>
+  <br><br>
+  <div id="tissueType">
+    <p>Select Tissue Type:</p>
+    <button class="tissue" data-type="1">1</button>
+    <button class="tissue" data-type="2">2</button>
+    <button class="tissue" data-type="3">3</button>
+    <button class="tissue" data-type="4">4</button>
+    <button class="tissue" data-type="5">5</button>
+    <button class="tissue" data-type="6">6</button>
+    <button class="tissue" data-type="7">7</button>
+    <button class="tissue" data-type="8">8</button>
+  </div>
+  <br>
+  <button id="newContourButton">New Contour</button>
+  <button id="processContoursButton">Process Contours</button>
+
+  <script>
+    const canvas = document.getElementById('imageCanvas');
+    const ctx = canvas.getContext('2d');
+    const image = new Image();
+    // Load the image using the filename passed from the backend.
+    image.src = "/get_image/{{ image_path }}";
+    image.onload = () => {
+      canvas.width = image.width;
+      canvas.height = image.height;
+      ctx.drawImage(image, 0, 0);
+    };
+
+    // Variables to store the drawn points and finalized contours.
+    let currentPoints = [];
+    let contours = [];
+    let currentTissue = null;
+
+    // Variables to help distinguish between a click and freehand drawing.
+    let isDrawing = false;
+    let isDragging = false;
+    let startPoint = null;
+
+    function getMousePos(e) {
+      const rect = canvas.getBoundingClientRect();
+      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    }
+
+    // Start drawing on mousedown.
+    canvas.addEventListener('mousedown', function(e) {
+      isDrawing = true;
+      startPoint = getMousePos(e);
+      currentPoints.push(startPoint);
+      isDragging = false;
+    });
+
+    // Track mouse movement for freehand drawing.
+    canvas.addEventListener('mousemove', function(e) {
+      if (!isDrawing) return;
+      const pos = getMousePos(e);
+      if (!isDragging && (Math.abs(pos.x - startPoint.x) > 5 || Math.abs(pos.y - startPoint.y) > 5)) {
+        isDragging = true;
+      }
+      if (isDragging) {
+        currentPoints.push(pos);
+        redraw();
+      }
+    });
+
+    // End drawing on mouseup.
+    canvas.addEventListener('mouseup', function(e) {
+      if (!isDragging) {
+        redraw();
+      }
+      isDrawing = false;
+    });
+
+    // Redraw the canvas with the base image and drawn contours.
+    function redraw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(image, 0, 0);
+      ctx.strokeStyle = 'red';
+      ctx.lineWidth = 2;
+
+      // Draw the current contour being drawn.
+      if (currentPoints.length > 0) {
+        ctx.beginPath();
+        ctx.moveTo(currentPoints[0].x, currentPoints[0].y);
+        currentPoints.forEach(pt => {
+          ctx.lineTo(pt.x, pt.y);
+        });
+        ctx.stroke();
+      }
+
+      // Draw all finalized contours.
+      contours.forEach(contour => {
+        ctx.beginPath();
+        ctx.moveTo(contour.points[0].x, contour.points[0].y);
+        contour.points.forEach(pt => {
+          ctx.lineTo(pt.x, pt.y);
+        });
+        ctx.closePath();
+        ctx.stroke();
+      });
+    }
+
+    // Undo the last point in the current contour.
+    document.getElementById('undoButton').addEventListener('click', function(){
+      if (currentPoints.length > 0) {
+        currentPoints.pop();
+        redraw();
+      }
+    });
+
+    // Complete the current contour (must have at least 3 points and a tissue type selected).
+    document.getElementById('completeButton').addEventListener('click', function(){
+      if (currentPoints.length > 2) {
+        if (currentTissue === null) {
+          alert("Please select a tissue type before completing the contour.");
+          return;
+        }
+        contours.push({points: currentPoints, tissue: currentTissue});
+        currentPoints = [];
+        currentTissue = null;
+        redraw();
+      } else {
+        alert("A polygon requires at least 3 points.");
+      }
+    });
+
+    // Select a tissue type.
+    document.querySelectorAll('.tissue').forEach(button => {
+      button.addEventListener('click', function(){
+        currentTissue = parseInt(this.getAttribute('data-type'));
+        alert("Selected tissue type: " + currentTissue);
+      });
+    });
+
+    // Start a new contour.
+    document.getElementById('newContourButton').addEventListener('click', function(){
+      currentPoints = [];
+      currentTissue = null;
+      redraw();
+    });
+
+    // Process all contours by sending the data to the backend.
+    document.getElementById('processContoursButton').addEventListener('click', function(){
+      fetch('/save_contours', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(contours)
+      })
+      .then(response => response.json())
+      .then(data => {
+        if(data.status === 'success'){
+          alert("Contours have been saved and processed!");
+        }
+      });
+    });
+  </script>
+</body>
+</html>
